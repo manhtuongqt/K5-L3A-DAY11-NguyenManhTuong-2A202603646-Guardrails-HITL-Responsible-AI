@@ -225,6 +225,26 @@ def write_lab_report_md(submission: Path, report: dict, out_md: Path) -> Path:
         if stdout:
             lines.extend(["", "```text", stdout[-1500:], "```"])
 
+    extensions = submission / "outputs" / "extensions"
+    if extensions.is_dir():
+        lines.extend(["", "## Optional exercises (auto-read evidence)", "",
+                      "| Exercise | Evidence | Result |", "|---|---|---|"])
+        for name in ["hitl", "judge_baseline", "judge", "nemo", "comparison", "security", "ai", "bonus", "scenarios", "b1_replay"]:
+            evidence = _load_json(extensions / (name + ".json"))
+            if not isinstance(evidence, dict):
+                continue
+            if name in {"judge", "judge_baseline"}:
+                result = f"Correct {evidence.get('correct')}/{evidence.get('total')}; errors={evidence.get('runtime_errors')}"
+            elif name == "scenarios":
+                result = f"Attacks={evidence.get('attacks_total')}; safe={evidence.get('safe_total')}; correct={evidence.get('correct')}; errors={evidence.get('runtime_errors')}"
+            elif name == "b1_replay":
+                result = f"Local repeated leaks={evidence.get('leaks')}; not official replay; historical CP4 leak may not reproduce"
+            elif name == "bonus":
+                result = f"B2 probes={evidence.get('attempts')}, leaks={evidence.get('leaks')}; selected={evidence.get('selected_bonus')} (coach replay required)"
+            else:
+                result = f"Passed={evidence.get('passed')}"
+            lines.append(f"| {name} | [JSON](extensions/{name}.json) | {result} |")
+
     lines.extend(
         [
             "",

@@ -6,6 +6,7 @@ Lab 11 — Optional enrichment: Human-in-the-Loop Design
   - 3 HITL decision points
 """
 from dataclasses import dataclass
+import math
 
 
 # ============================================================
@@ -67,32 +68,17 @@ class ConfidenceRouter:
         Returns:
             RoutingDecision with routing action and metadata
         """
-        # Optional: Implement routing logic
-        #
-        # 1. Check if action_type is in HIGH_RISK_ACTIONS
-        #    -> If yes: always escalate (action="escalate", priority="high",
-        #       requires_human=True, reason="High-risk action: {action_type}")
-        #
-        # 2. Check confidence thresholds:
-        #    - confidence >= 0.9:
-        #      action="auto_send", priority="low",
-        #      requires_human=False, reason="High confidence"
-        #
-        #    - 0.7 <= confidence < 0.9:
-        #      action="queue_review", priority="normal",
-        #      requires_human=True, reason="Medium confidence — needs review"
-        #
-        #    - confidence < 0.7:
-        #      action="escalate", priority="high",
-        #      requires_human=True, reason="Low confidence — escalating"
-
-        return RoutingDecision(
-            action="auto_send",
-            confidence=confidence,
-            reason="TODO: implement routing logic",
-            priority="low",
-            requires_human=False,
-        )  # TODO: Replace with implementation
+        if not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("Confidence must be a finite number from 0 to 1.")
+        if action_type in HIGH_RISK_ACTIONS:
+            return RoutingDecision("escalate", confidence, f"High-risk action: {action_type}", "high", True)
+        if not response.strip():
+            return RoutingDecision("escalate", confidence, "Empty response requires investigation", "high", True)
+        if confidence >= self.HIGH_THRESHOLD:
+            return RoutingDecision("auto_send", confidence, "High confidence", "low", False)
+        if confidence >= self.MEDIUM_THRESHOLD:
+            return RoutingDecision("queue_review", confidence, "Medium confidence — needs review", "normal", True)
+        return RoutingDecision("escalate", confidence, "Low confidence — escalating", "high", True)
 
 
 # ============================================================
@@ -115,33 +101,33 @@ class ConfidenceRouter:
 hitl_decision_points = [
     {
         "id": 1,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Approve high-risk banking changes",
+        "trigger": "Transfer, account closure, password change, data deletion or personal-info update, at any confidence",
+        "hitl_model": "human-in-the-loop",
+        "context_needed": "Verified customer intent, proposed action/diff, amount, exact destination, egress check and identity verification",
+        "example": "A request proposes transferring 50 million VND to a new beneficiary; confidence 0.98 still escalates",
+        "approval_path": "Pause execution; an authorized reviewer approves the exact action snapshot or rejects it; timeout leaves it unexecuted",
+        "audit_fields": "correlation_id, user_id, action, proposed_diff_hash, destination, approval_id, reviewer_id, decision, decided_at, expires_at",
     },
     {
         "id": 2,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Review ambiguous or ungrounded advice",
+        "trigger": "Confidence below 0.9, missing source, contradictory rate or an accuracy/safety Judge disagreement",
+        "hitl_model": "human-as-tiebreaker",
+        "context_needed": "Original question, redacted draft, retrieved source, ground truth, confidence provenance and Judge reason",
+        "example": "The draft claims 5.5% savings APY while the lab reference says 4.25%",
+        "approval_path": "Queue medium-confidence drafts; escalate low confidence; reviewer corrects and approves or rejects; timeout sends no unreviewed draft",
+        "audit_fields": "correlation_id, question, redacted_draft, source_ids, confidence, judge_verdict, reviewer_id, decision, corrected_answer_hash, decided_at",
     },
     {
         "id": 3,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Investigate elevated block or leak metrics",
+        "trigger": "Monitoring thresholds exceeded, or any attempted protected-data egress",
+        "hitl_model": "human-on-the-loop",
+        "context_needed": "Redacted correlated audit entries, rule versions, alert trend, affected users and proposed policy change",
+        "example": "A sudden injection spike produces a block-rate alert while normal banking requests still pass",
+        "approval_path": "Existing code rules keep blocking; reviewer closes the alert or approves a separately tested policy change; timeout never relaxes guards",
+        "audit_fields": "alert_id, correlation_ids, metric, threshold, rule_version, proposed_diff_hash, reviewer_id, decision, decided_at",
     },
 ]
 

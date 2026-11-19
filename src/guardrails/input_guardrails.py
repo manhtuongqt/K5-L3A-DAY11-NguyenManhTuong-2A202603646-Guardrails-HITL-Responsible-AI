@@ -20,6 +20,7 @@ from google.adk.agents.invocation_context import InvocationContext
 
 from core.config import ALLOWED_TOPICS, BLOCKED_TOPICS
 from agents.security_boundary import normalize_for_security, contains_secret
+from guardrails.security_text import inspection_views
 
 # Quyết định rõ ràng — tránh đảo nghĩa True/False
 InputStatus = Literal["ALLOW", "BLOCK"]
@@ -45,7 +46,28 @@ INJECTION_PATTERNS = (
     r"\b(?:base64|rot13|hex)\b.{0,120}\b(?:password|secret|credentials?|internal)\b",
     r"\bbo\s+qua\s+(?:(?:tat\s+ca|moi|cac)\s+)?(?:huong\s+dan|quy\s+tac)\b",
     r"\b(?:tiet\s+lo|in\s+ra|cung\s+cap|cho\s+toi\s+xem)\b.{0,120}\b(?:mat\s+khau|bi\s+mat|cau\s+hinh\s+noi\s+bo)\b",
+    r"\b(?:bo\s+qua|tiet\s+lo|in\s+ra)\b.{0,120}\b(?:loi\s+nhac\s+he\s+thong|system\s+prompt)\b",
+    # Deliberately scoped French/Spanish examples, not arbitrary-language coverage.
+    r"\b(?:ignorez|oubliez)\b.{0,80}\binstructions\b|\b(?:revelez|affichez)\b.{0,80}\b(?:prompt|mot de passe|secrets?)\b",
+    r"\b(?:ignora|olvida)\b.{0,80}\binstrucciones\b|\b(?:revela|muestra)\b.{0,80}\b(?:prompt|contrasena|secretos?)\b",
 )
+
+
+def _unscramble_signals(text: str) -> str:
+    """Recognize middle-letter permutations of a small instruction vocabulary.
+
+    Words alone do not block a request: contextual injection patterns must match.
+    This heuristic cannot understand arbitrary misspellings or homoglyph scripts.
+    """
+    vocabulary = ("ignore", "previous", "system", "instructions", "reveal", "prompt", "bypass")
+    def replace(match):
+        word = match[0]
+        for expected in vocabulary:
+            if (len(word) == len(expected) and word[0] == expected[0] and word[-1] == expected[-1]
+                    and sorted(word[1:-1]) == sorted(expected[1:-1])):
+                return expected
+        return word
+    return re.sub(r"\b[a-z]{4,}\b", replace, text)
 
 
 # ============================================================
@@ -76,11 +98,11 @@ def detect_injection(user_input: str) -> InputStatus:
     Returns:
         ``"BLOCK"`` if injection detected (chặn), ``"ALLOW"`` otherwise (cho qua).
     """
-    text = canonical_text(user_input)
-    if contains_secret(text):
+    if not user_input.strip() or len(user_input) > 12000:
         return "BLOCK"
-    for pattern in INJECTION_PATTERNS:
-        if re.search(pattern, text):
+    for view in inspection_views(user_input):
+        text = _unscramble_signals(canonical_text(view))
+        if contains_secret(text) or any(re.search(pattern, text) for pattern in INJECTION_PATTERNS):
             return "BLOCK"
     return "ALLOW"
 

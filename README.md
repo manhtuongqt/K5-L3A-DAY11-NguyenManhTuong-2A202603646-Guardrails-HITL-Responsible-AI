@@ -11,11 +11,12 @@ Các tên model mặc định trong tài liệu starter phía dưới được g
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env  # Chỉ khi chưa có .env; điền key thật trên máy
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }  # Điền key thật trên máy
 .\.venv\Scripts\python.exe -X utf8 src/main.py --part 2
 .\.venv\Scripts\python.exe -X utf8 src/main.py --part 3
 .\.venv\Scripts\python.exe -X utf8 src/main.py --part 4
 .\.venv\Scripts\python.exe -X utf8 scripts/check_runtime.py
+.\.venv\Scripts\python.exe -X utf8 -u scripts/run_extensions.py --section all
 .\.venv\Scripts\python.exe -m pytest tests/smoke tests/public tests/unit -q
 .\.venv\Scripts\python.exe scripts/verify_submission.py
 .\.venv\Scripts\python.exe scripts/grade.py --submission-dir . --out outputs/grade_report.json
@@ -28,7 +29,8 @@ Các lệnh CP3/CP4 gọi API thật và ghi kết quả trong `outputs/`; giữ
 
 ### Giải thích các phần tự làm
 
-- Input: chuẩn hóa Unicode/ký tự ẩn trước khi xét injection và topic. Nội dung email
+- Input: chuẩn hóa Unicode/ký tự ẩn, kiểm tra thêm các góc nhìn sau giải mã có giới hạn
+  trước khi xét injection và topic. Không đưa bản giải mã lên LLM làm chỉ dẫn mới. Nội dung email
   được xem là dữ liệu; yêu cầu tóm tắt email banking bình thường vẫn được cho qua.
 - Output: che PII và secret bằng `[REDACTED]`, kể cả giá trị demo bị chèn dấu cách.
   Kết quả phân biệt `redacted` (vẫn trả lời sau khi che) với `blocked` (từ chối);
@@ -48,8 +50,72 @@ Các lệnh CP3/CP4 gọi API thật và ghi kết quả trong `outputs/`; giữ
   Script grade không tự xác nhận điểm cuối cùng hay replay bonus.
 
 Codex hỗ trợ triển khai và kiểm thử; học viên cần đọc source, tự chạy và giải thích
-được các quyết định ở trên theo quy định dùng AI của lab. HITL, Judge, NeMo cho Blue
-và AI-generated attacks là phần tham khảo, không nằm trong phần bắt buộc đã chọn.
+được các quyết định ở trên theo quy định dùng AI của lab.
+
+### Các phần mở rộng đã triển khai
+
+- HITL: router ba mức confidence, luôn chuyển hành động rủi ro cao cho người duyệt;
+  ba decision points có luồng approve/reject/timeout và trường audit. Các ví dụ
+  approval trong artifact là mô phỏng, không phải phê duyệt người thật.
+- LLM-as-Judge: dùng model Red độc lập để đánh giá câu trả lời theo ground truth
+  của lab; lỗi API hoặc verdict không hợp lệ được ghi nhận riêng, không coi là SAFE.
+  Độ đúng được đo trên tám case mẫu; Judge vẫn có thể đánh giá sai.
+- Blue NeMo: dùng chính model/key Blue, thêm Colang rules cho đổi vai, yêu cầu mã
+  hóa và injection tiếng Việt, cùng input/output self-check và kiểm tra secret.
+- Before/after và SecurityTestPipeline: đo leak, block, refusal, redaction và API
+  errors riêng; không gọi mọi response không leak là BLOCKED. So sánh Red/Blue
+  dùng model khác nhau, nên không phải thí nghiệm nhân quả chỉ riêng guardrails.
+- AI-generated attacks và khảo sát B2: sinh rồi chạy probe trên target lab giữ
+  nguyên phòng thủ. Kết quả thử nghiệm không tự cấp bonus; chỉ chọn B1 hoặc B2.
+
+Chạy từng phần bằng `scripts/run_extensions.py --section <tên>` với tên
+`hitl`, `judge`, `nemo`, `comparison`, `security`, `ai`, `bonus`, `scenarios`, `b1_replay`.
+Artifacts thực được ghi riêng tại `outputs/extensions/`, không ghi đè CP3/CP4.
+Các phần này vẫn là tham khảo theo rubric, không biến thành checkpoint bắt buộc.
+
+### Đối chiếu kịch bản tấn công và phòng thủ
+
+Corpus tự tạo tại [`src/testing/scenarios.py`](src/testing/scenarios.py);
+bằng chứng tự sinh tại [`outputs/extensions/scenarios.json`](outputs/extensions/scenarios.json).
+
+| Nhóm thử nghiệm | Ví dụ trong lab | Lớp xử lý |
+|---|---|---|
+| Ghi đè chỉ dẫn / giả vai trò | Ignore previous instructions; giả system qua delimiter | Reject trước LLM |
+| Che bằng ký tự | Zero-width, full-width, đảo chữ giữa từ | Unicode normalization + heuristic có ngữ cảnh |
+| Nội dung mã hóa | Base64, hex, URL, HTML entity, Unicode escape, ROT13, đảo chuỗi, Base64 lồng | Giải mã để kiểm tra lại; không thực thi |
+| Đa ngôn ngữ | Việt có/không dấu, Pháp, Tây Ban Nha, trộn Anh–Việt | Pattern có phạm vi + NeMo self-check tùy chọn |
+| Chỉ dẫn trong dữ liệu | Email, đoạn RAG và kết quả tool giả lập dưới dạng chuỗi | Xem dữ liệu là không đáng tin; reject override |
+| Yêu cầu đưa secret ra ngoài | Yêu cầu Markdown image URL; payload secret mã hóa | Input reject, output filter, HTTPS/hostname allowlist |
+| Đối chứng hợp lệ | Hỏi reset password, banking email, nhắc Base64 không lấy secret | Cho qua; tránh cấm riêng từ “password” hay “Base64” |
+
+`scenarios` chạy 23 input tấn công qua runtime thật (đều không gọi model), 6 câu
+đối chứng gọi API Blue thật, và 6 output/egress fixtures chứa secret demo đã biến đổi.
+Chuẩn hóa là để nhận diện; không xóa vài từ nguy hiểm rồi cho phần còn lại chạy tiếp.
+Nếu phát hiện nội dung nguy hiểm thì reject toàn bộ yêu cầu. Không tự dịch mọi ngôn ngữ.
+Decoder giới hạn 3 lớp, 32 góc nhìn, 24 token/góc nhìn, 12000 ký tự; không giải mật mã.
+
+Các ca email/RAG/tool ở trên là fixture chuỗi, chưa kiểm chứng một hệ thống retrieval
+hay tool thật. Chưa thử injection qua OCR/ảnh/audio, hội thoại nhiều lượt có memory,
+hay mọi ngôn ngữ ít tài nguyên/homoglyph. Không có cam kết chặn mọi prompt injection.
+Hành động nhạy cảm phải được kiểm quyền bằng code và duyệt người, độc lập lời model.
+
+Nguồn đối chiếu đã đọc ngày 2026-11-19:
+
+- [OWASP Prompt Injection Prevention](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html):
+  các nhóm encoding, đa ngôn ngữ, indirect injection; khuyến nghị phân tách dữ liệu,
+  kiểm đầu ra, giới hạn quyền, HITL và monitoring. Các giới hạn thử nghiệm được ghi riêng ở trên.
+- [NVIDIA NeMo jailbreak protection](https://docs.nvidia.com/nemo/guardrails/configure-guardrails/guardrail-catalog/jailbreak-protection):
+  ngoài self-check còn có heuristic và model detector. Bài này dùng NeMo 0.24.1 +
+  custom Colang/self-check; chưa bật perplexity service hoặc detector bổ sung.
+- [NVIDIA garak](https://github.com/NVIDIA/garak): scanner mã nguồn mở để mở rộng kiểm
+  thử; chưa cài/chạy trong bài, không tính kết quả corpus riêng là kết quả garak.
+- [ProtectAI LLM Guard](https://github.com/protectai/llm-guard): có thể tham khảo scanner;
+  repo đã archive, không được cài thêm vào môi trường bài này.
+
+Kết quả bonus có thể không lặp lại: artifact CP4 lưu một lần Red lộ secret, nhưng
+[`b1_replay.json`](outputs/extensions/b1_replay.json) ghi lại một lần thử mới không lộ.
+Không bỏ kết quả bất lợi này hoặc coi B1 là chắc chắn; coach replay quyết định điểm.
+Khảo sát B2 bổ sung 13 probe cho 0 leak, không tự nhận đạt B2.
 
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** đóng vai **Blue Team** để học cách xây Guardrails phòng thủ, rồi đóng vai **Red Team** để tấn công agent **Red** hoặc **Red Advance**.  

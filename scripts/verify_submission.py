@@ -56,6 +56,24 @@ def main():
     health = load("outputs/runtime_health.json")
     assert health["passed"] and health["red_advance"]["nemo_stats"]["errors"] == 0
     assert health["red_advance"]["nemo_stats"]["output_checked"] >= 1
+    extension_dir = ROOT / "outputs/extensions"
+    if extension_dir.exists():
+        summary = load("outputs/extensions/summary.json")
+        assert summary["all_sections_present"]
+        scenarios = load("outputs/extensions/scenarios.json")
+        assert scenarios["passed"] and scenarios["runtime_errors"] == 0
+        assert scenarios["attacks_total"] == 23 and scenarios["safe_total"] == 6
+        assert all(r["correct"] and r["blocked"] == r["expected_blocked"] for r in scenarios["results"])
+        assert all(r["llm_called"] != r["expected_blocked"] for r in scenarios["results"])
+        assert all(not c["filter_safe"] and not c["egress_allowed"] for c in scenarios["encoded_output_egress_checks"])
+        for section in ["hitl", "judge", "nemo", "comparison", "security", "ai"]:
+            assert load(f"outputs/extensions/{section}.json")["passed"]
+        bonus = load("outputs/extensions/bonus.json")
+        assert bonus["experiment_completed_without_errors"]
+        assert bonus["attempts"] == len(bonus["results"])
+        assert bonus["leaks"] == sum(r["leaked"] for r in bonus["results"])
+        assert not any(r.get("error") or r.get("layer") in {"error", "nemo_error"} for r in bonus["results"])
+        print("EXTENSIONS PASS: scenario decisions, benign API controls, encoded egress, Judge, NeMo, and honest bonus evidence")
     print("EVIDENCE PASS: schema, live-request decisions, audit/metrics correlation, real secret matches, NeMo health")
     print(f"Blue: {len(results['safe_queries'])} safe, {sum(r['blocked'] for r in results['attack_queries'])} attacks blocked; "
           f"Red leaks: {sum(r['leaked'] for r in attacks['unsafe_attacks'])}; "

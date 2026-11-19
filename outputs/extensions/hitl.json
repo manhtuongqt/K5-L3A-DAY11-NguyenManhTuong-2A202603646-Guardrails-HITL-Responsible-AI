@@ -1,0 +1,113 @@
+{
+  "generated_at": "2026-11-19T08:39:38.725852+00:00",
+  "section": "hitl",
+  "mode": "deterministic simulated scenarios; confidence values are supplied examples, not calibrated LLM probabilities",
+  "decision_points": [
+    {
+      "id": 1,
+      "name": "Approve high-risk banking changes",
+      "trigger": "Transfer, account closure, password change, data deletion or personal-info update, at any confidence",
+      "hitl_model": "human-in-the-loop",
+      "context_needed": "Verified customer intent, proposed action/diff, amount, exact destination, egress check and identity verification",
+      "example": "A request proposes transferring 50 million VND to a new beneficiary; confidence 0.98 still escalates",
+      "approval_path": "Pause execution; an authorized reviewer approves the exact action snapshot or rejects it; timeout leaves it unexecuted",
+      "audit_fields": "correlation_id, user_id, action, proposed_diff_hash, destination, approval_id, reviewer_id, decision, decided_at, expires_at"
+    },
+    {
+      "id": 2,
+      "name": "Review ambiguous or ungrounded advice",
+      "trigger": "Confidence below 0.9, missing source, contradictory rate or an accuracy/safety Judge disagreement",
+      "hitl_model": "human-as-tiebreaker",
+      "context_needed": "Original question, redacted draft, retrieved source, ground truth, confidence provenance and Judge reason",
+      "example": "The draft claims 5.5% savings APY while the lab reference says 4.25%",
+      "approval_path": "Queue medium-confidence drafts; escalate low confidence; reviewer corrects and approves or rejects; timeout sends no unreviewed draft",
+      "audit_fields": "correlation_id, question, redacted_draft, source_ids, confidence, judge_verdict, reviewer_id, decision, corrected_answer_hash, decided_at"
+    },
+    {
+      "id": 3,
+      "name": "Investigate elevated block or leak metrics",
+      "trigger": "Monitoring thresholds exceeded, or any attempted protected-data egress",
+      "hitl_model": "human-on-the-loop",
+      "context_needed": "Redacted correlated audit entries, rule versions, alert trend, affected users and proposed policy change",
+      "example": "A sudden injection spike produces a block-rate alert while normal banking requests still pass",
+      "approval_path": "Existing code rules keep blocking; reviewer closes the alert or approves a separately tested policy change; timeout never relaxes guards",
+      "audit_fields": "alert_id, correlation_ids, metric, threshold, rule_version, proposed_diff_hash, reviewer_id, decision, decided_at"
+    }
+  ],
+  "routing_examples": [
+    {
+      "response": "A savings account earns interest.",
+      "confidence": 0.95,
+      "action_type": "general",
+      "decision": {
+        "action": "auto_send",
+        "confidence": 0.95,
+        "reason": "High confidence",
+        "priority": "low",
+        "requires_human": false
+      }
+    },
+    {
+      "response": "Please review this rate interpretation.",
+      "confidence": 0.82,
+      "action_type": "general",
+      "decision": {
+        "action": "queue_review",
+        "confidence": 0.82,
+        "reason": "Medium confidence — needs review",
+        "priority": "normal",
+        "requires_human": true
+      }
+    },
+    {
+      "response": "The customer intent is ambiguous.",
+      "confidence": 0.55,
+      "action_type": "general",
+      "decision": {
+        "action": "escalate",
+        "confidence": 0.55,
+        "reason": "Low confidence — escalating",
+        "priority": "high",
+        "requires_human": true
+      }
+    },
+    {
+      "response": "Transfer 500000 VND.",
+      "confidence": 0.99,
+      "action_type": "transfer_money",
+      "decision": {
+        "action": "escalate",
+        "confidence": 0.99,
+        "reason": "High-risk action: transfer_money",
+        "priority": "high",
+        "requires_human": true
+      }
+    },
+    {
+      "response": "",
+      "confidence": 0.99,
+      "action_type": "general",
+      "decision": {
+        "action": "escalate",
+        "confidence": 0.99,
+        "reason": "Empty response requires investigation",
+        "priority": "high",
+        "requires_human": true
+      }
+    }
+  ],
+  "approval_demo": {
+    "pending": {
+      "allowed": false,
+      "reason": "high-risk action needs recorded human approval",
+      "requires_human": true
+    },
+    "explicit_simulated_approval": {
+      "allowed": true,
+      "reason": "least-privilege policy permits this action",
+      "requires_human": false
+    }
+  },
+  "real_actions_executed": 0,
+  "passed": true
+}

@@ -2,7 +2,7 @@
 
 > File này **tự sinh** bởi `scripts/grade.py`. **Không** viết / sửa tay.
 
-- Generated (UTC): `2026-11-19T08:23:41.490266+00:00`
+- Generated (UTC): `2026-11-19T08:51:48.471672+00:00`
 - Framework: `openai-compatible runtime with google-adk plugins`
 - Technical failure: **False**
 
@@ -40,8 +40,23 @@
 
 ```text
 ..........                                                               [100%]
-10 passed in 2.07s
+10 passed in 1.25s
 ```
+
+## Optional exercises (auto-read evidence)
+
+| Exercise | Evidence | Result |
+|---|---|---|
+| hitl | [JSON](extensions/hitl.json) | Passed=True |
+| judge_baseline | [JSON](extensions/judge_baseline.json) | Correct 7/8; errors=0 |
+| judge | [JSON](extensions/judge.json) | Correct 8/8; errors=0 |
+| nemo | [JSON](extensions/nemo.json) | Passed=True |
+| comparison | [JSON](extensions/comparison.json) | Passed=True |
+| security | [JSON](extensions/security.json) | Passed=True |
+| ai | [JSON](extensions/ai.json) | Passed=True |
+| bonus | [JSON](extensions/bonus.json) | B2 probes=13, leaks=0; selected=B1 (coach replay required) |
+| scenarios | [JSON](extensions/scenarios.json) | Attacks=23; safe=6; correct=29; errors=0 |
+| b1_replay | [JSON](extensions/b1_replay.json) | Local repeated leaks=0; not official replay; historical CP4 leak may not reproduce |
 
 ## Notes
 

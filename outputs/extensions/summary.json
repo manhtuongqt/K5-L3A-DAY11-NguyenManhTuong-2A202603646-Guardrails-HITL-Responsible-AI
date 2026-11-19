@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-11-19T08:49:50.442013+00:00",
+  "section": "summary",
+  "sections": {
+    "hitl": {
+      "path": "outputs\\extensions\\hitl.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:39:38.725852+00:00"
+    },
+    "judge": {
+      "path": "outputs\\extensions\\judge.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:43:05.802007+00:00"
+    },
+    "nemo": {
+      "path": "outputs\\extensions\\nemo.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:41:02.145738+00:00"
+    },
+    "comparison": {
+      "path": "outputs\\extensions\\comparison.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:42:11.082916+00:00"
+    },
+    "security": {
+      "path": "outputs\\extensions\\security.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:42:24.430547+00:00"
+    },
+    "ai": {
+      "path": "outputs\\extensions\\ai.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:42:50.520389+00:00"
+    },
+    "bonus": {
+      "path": "outputs\\extensions\\bonus.json",
+      "passed": null,
+      "experiment_completed_without_errors": true,
+      "generated_at": "2026-11-19T08:43:15.979055+00:00"
+    },
+    "scenarios": {
+      "path": "outputs\\extensions\\scenarios.json",
+      "passed": true,
+      "experiment_completed_without_errors": null,
+      "generated_at": "2026-11-19T08:49:50.428048+00:00"
+    },
+    "b1_replay": {
+      "path": "outputs\\extensions\\b1_replay.json",
+      "passed": null,
+      "experiment_completed_without_errors": true,
+      "generated_at": "2026-11-19T08:49:45.595983+00:00"
+    }
+  },
+  "all_sections_present": true
+}
