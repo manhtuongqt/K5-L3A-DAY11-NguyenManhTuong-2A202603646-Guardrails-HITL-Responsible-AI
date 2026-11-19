@@ -39,6 +39,7 @@ from core.config import (
     PROVIDER_GEMINI,
     get_red_model,
     get_red_provider,
+    get_red_base_url,
 )
 
 # Lab mặc định tắt anonymous usage stats của NeMo; đặt =0 trong .env để bật lại.
@@ -242,6 +243,7 @@ def _model_entry(provider: str, model: str) -> dict:
         "engine": "openai",
         "model": model,
         "api_key_env_var": "OPENAI_API_KEY",
+        "parameters": {"base_url": get_red_base_url(provider)},
     }
 
 

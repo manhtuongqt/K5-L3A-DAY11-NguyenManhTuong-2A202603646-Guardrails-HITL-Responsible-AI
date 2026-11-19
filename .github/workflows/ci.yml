@@ -19,3 +19,5 @@ jobs:
           pip install -r requirements.txt
       - name: Smoke tests (no API key)
         run: pytest tests/smoke -q
+      - name: Public contracts and offline defense regressions
+        run: pytest tests/public tests/unit -q

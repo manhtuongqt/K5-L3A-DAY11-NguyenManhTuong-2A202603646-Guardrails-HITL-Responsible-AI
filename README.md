@@ -1,5 +1,56 @@
 # Day 11 — Controlled Agent Security (2026)
 
+**Bài cá nhân:** Nguyễn Mạnh Tường · MSSV `2A202603646` · L3A.
+
+**Cấu hình buổi học theo xác nhận của học viên về hướng dẫn coach:** Blue = Liquid
+`lfm3-1.7b` trực tiếp; Red và Red Advance = CKey `claude-opus-5`.
+Các tên model mặc định trong tài liệu starter phía dưới được giữ để tham chiếu.
+
+### Chạy bài làm trên Windows
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env  # Chỉ khi chưa có .env; điền key thật trên máy
+.\.venv\Scripts\python.exe -X utf8 src/main.py --part 2
+.\.venv\Scripts\python.exe -X utf8 src/main.py --part 3
+.\.venv\Scripts\python.exe -X utf8 src/main.py --part 4
+.\.venv\Scripts\python.exe -X utf8 scripts/check_runtime.py
+.\.venv\Scripts\python.exe -m pytest tests/smoke tests/public tests/unit -q
+.\.venv\Scripts\python.exe scripts/verify_submission.py
+.\.venv\Scripts\python.exe scripts/grade.py --submission-dir . --out outputs/grade_report.json
+```
+
+Các lệnh CP3/CP4 gọi API thật và ghi kết quả trong `outputs/`; giữ `.env` local.
+`check_runtime.py` gọi thêm một câu banking trên Blue và Red Advance để kiểm tra
+đường cho qua model, cả input/output rails NeMo và không có lỗi fail-closed.
+Đọc kết quả tự sinh tại [`outputs/lab_report.md`](outputs/lab_report.md).
+
+### Giải thích các phần tự làm
+
+- Input: chuẩn hóa Unicode/ký tự ẩn trước khi xét injection và topic. Nội dung email
+  được xem là dữ liệu; yêu cầu tóm tắt email banking bình thường vẫn được cho qua.
+- Output: che PII và secret bằng `[REDACTED]`, kể cả giá trị demo bị chèn dấu cách.
+  Kết quả phân biệt `redacted` (vẫn trả lời sau khi che) với `blocked` (từ chối);
+  không tính việc che một giá trị trong câu trả lời thành chặn toàn bộ câu hỏi.
+  Rate limiter chạy trước input, nên request vượt hạn không gọi model.
+- Rate limit: sliding window 10 request/60 giây riêng từng user; thời gian đo bằng
+  đồng hồ monotonic. Audit và monitoring là observers bao quanh mọi request, có
+  correlation ID, thời gian, lớp chặn và latency; nội dung nhạy cảm trong audit được che.
+- Egress: kiểm tra HTTPS và hostname chính xác trong allowlist, rồi kiểm payload;
+  lời nói của model không có quyền cho phép gửi dữ liệu ra ngoài.
+- CP3: 7 câu banking, 9 câu tấn công, 3 case biên và 15 request rate-limit chạy
+  qua cùng pipeline. Kiểm tra output bằng dataset được ghi rõ là fixture offline.
+- CP4: 5 prompt theo 5 kỹ thuật, không chèn trước giá trị secret vào prompt để tránh
+  tính nhầm echo thành leak. Prompt thứ 5 chia các pha trong một lượt trả lời;
+  runner không tự duy trì hội thoại nhiều lượt. Giữ nguyên phòng thủ target tham khảo.
+- Chọn bonus **B1** nếu replay leak Red thành công; không cộng B1 với B2.
+  Script grade không tự xác nhận điểm cuối cùng hay replay bonus.
+
+Codex hỗ trợ triển khai và kiểm thử; học viên cần đọc source, tự chạy và giải thích
+được các quyết định ở trên theo quy định dùng AI của lab. HITL, Judge, NeMo cho Blue
+và AI-generated attacks là phần tham khảo, không nằm trong phần bắt buộc đã chọn.
+
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** đóng vai **Blue Team** để học cách xây Guardrails phòng thủ, rồi đóng vai **Red Team** để tấn công agent **Red** hoặc **Red Advance**.  
 > ✅ Làm theo **Checkpoint 1 → 5** trong [`CHECKPOINTS.md`](CHECKPOINTS.md) · nộp theo [`SUBMISSION.md`](SUBMISSION.md).
@@ -160,5 +211,17 @@ pip install -r requirements.txt
 
 Điền `.env`: `OPENROUTER_API_KEY` + `RED_TEAM_PROVIDER=openai|gemini` (và key tương ứng).  
 Rồi mở [`CHECKPOINTS.md`](CHECKPOINTS.md) và làm lần lượt Checkpoint 1 → 5.
+
+**Cấu hình local khi dùng key trực tiếp từ Liquid Console:** đặt `BLUE_PROVIDER=liquid`
+và `LIQUID_API_KEY` trong `.env`. Blue dùng endpoint `https://api.liquid.ai/openai/v1`
+với model ID `lfm3-1.7b`, theo [Liquid API](https://docs.liquid.ai/api/overview).
+Đây là đường gọi trực tiếp bổ sung; mặc định starter vẫn là OpenRouter.
+Key Liquid không dùng cho endpoint OpenRouter. Cấu hình Blue độc lập với cấu hình Red.
+
+**Cấu hình theo hướng dẫn coach trong buổi lab này:** Blue giữ `lfm3-1.7b`;
+Red được chọn model khác. Với CKey, đặt `RED_TEAM_PROVIDER=ckey`,
+`OPENAI_BASE_URL=https://api.xah.io/v1`, `OPENAI_MODEL=claude-opus-5`
+và key CKey trong `OPENAI_API_KEY` của `.env`. Cả Red, Red Advance và NeMo
+self-check dùng chung endpoint/model/key; metadata provider được ghi là `ckey`.
 
 Nộp theo [`SUBMISSION.md`](SUBMISSION.md) · Quy định: [`RULES.md`](RULES.md).

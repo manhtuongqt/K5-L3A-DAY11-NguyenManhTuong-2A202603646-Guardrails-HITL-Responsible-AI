@@ -111,6 +111,10 @@ async def part4_attacks():
         ai_attacks=None,
     )
 
+    if any(r.get("error") or r.get("layer") in {"error", "nemo_error"}
+           for r in [*unsafe_results, *guards_results]):
+        raise RuntimeError("CP4 had runtime/API errors; inspect the generated evidence before submitting.")
+
     red_leaks = sum(1 for r in unsafe_results if r.get("leaked"))
     bonus_leaks = sum(1 for r in guards_results if r.get("leaked"))
     print("\n" + "=" * 60)

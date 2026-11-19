@@ -1,14 +1,15 @@
 """
 OpenAI SDK runtime — dùng cho:
 
-  Blue Team → OpenRouter liquid/lfm-3-1.7b:free (create_blue_pair)
-  Red Team  → OpenAI gpt-4o-mini (create_openai_pair) khi RED_TEAM_PROVIDER=openai
+  Blue Team → LFM3-1.7B via OpenRouter or direct Liquid API (create_blue_pair)
+  Red Team  → OpenAI / CKey (create_openai_pair)
 
 Gemini Red Team dùng Google ADK trong agents/*.py — không đi qua file này.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import inspect
 from typing import Any, Callable
 
 from core.config import (
@@ -45,31 +46,38 @@ class OpenAIRunner:
     client_kwargs: dict = field(default_factory=dict)
     input_hooks: list[Callable[[str], str | None]] = field(default_factory=list)
     output_hooks: list[Callable[[str], str]] = field(default_factory=list)
+    last_outcome: dict = field(default_factory=dict, init=False)
 
     def _client(self):
         from openai import OpenAI
 
         return OpenAI(**(self.client_kwargs or {}))
 
-    async def chat(self, agent: OpenAIAgent, user_message: str) -> str:
+    async def chat(self, agent: OpenAIAgent, user_message: str, *, user_id: str = "student") -> str:
+        self.last_outcome = {"blocked": False, "redacted": False, "layer": None, "llm_called": False}
         for hook in self.input_hooks:
             blocked = hook(user_message)
             if blocked:
+                self.last_outcome.update(blocked=True, layer="input_hook")
                 return blocked
 
-        block_msg = await self._run_input_plugins(user_message)
+        block_msg = await self._run_input_plugins(user_message, user_id=user_id)
         if block_msg is not None:
             return block_msg
 
         client = self._client()
-        completion = client.chat.completions.create(
-            model=self.model,
-            messages=[
+        self.last_outcome["llm_called"] = True
+        request = {
+            "model": self.model,
+            "messages": [
                 {"role": "system", "content": agent.instruction},
                 {"role": "user", "content": user_message},
             ],
-            temperature=self.temperature,
-        )
+        }
+        # Newer Claude models require their default sampling settings.
+        if not self.model.lower().startswith("claude-"):
+            request["temperature"] = self.temperature
+        completion = client.chat.completions.create(**request)
         text = (completion.choices[0].message.content or "").strip()
 
         for hook in self.output_hooks:
@@ -78,41 +86,33 @@ class OpenAIRunner:
         text = await self._run_output_plugins(text)
         return text
 
-    async def _run_input_plugins(self, user_message: str) -> str | None:
+    async def _run_input_plugins(self, user_message: str, *, user_id: str = "student") -> str | None:
         if not self.plugins:
             return None
-        try:
-            from google.genai import types
-        except ImportError:
-            return None
+        from google.genai import types
 
         user_content = types.Content(
             role="user",
             parts=[types.Part.from_text(text=user_message)],
         )
-        ctx = _MockInvocationContext()
+        ctx = _MockInvocationContext(user_id=user_id)
         for plugin in self.plugins:
             cb = getattr(plugin, "on_user_message_callback", None)
             if cb is None:
                 continue
-            try:
-                result = await cb(
-                    invocation_context=ctx, user_message=user_content
-                )
-            except TypeError:
-                result = cb(invocation_context=ctx, user_message=user_content)
+            result = cb(invocation_context=ctx, user_message=user_content)
+            if inspect.isawaitable(result):
+                result = await result
             if result is None:
                 continue
+            self.last_outcome.update(blocked=True, layer=getattr(plugin, "name", "input_guardrail"))
             return _content_to_text(result)
         return None
 
     async def _run_output_plugins(self, text: str) -> str:
         if not self.plugins or not text:
             return text
-        try:
-            from google.genai import types
-        except ImportError:
-            return text
+        from google.genai import types
 
         content = types.Content(
             role="model", parts=[types.Part.from_text(text=text)]
@@ -131,13 +131,20 @@ class OpenAIRunner:
             cb = getattr(plugin, "after_model_callback", None)
             if cb is None:
                 continue
-            try:
-                out = await cb(callback_context=_Ctx(), llm_response=llm_response)
-            except TypeError:
-                out = cb(callback_context=_Ctx(), llm_response=llm_response)
+            blocked_before = getattr(plugin, "blocked_count", 0)
+            redacted_before = getattr(plugin, "redacted_count", 0)
+            out = cb(callback_context=_Ctx(), llm_response=llm_response)
+            if inspect.isawaitable(out):
+                out = await out
             if out is not None and getattr(out, "content", None) is not None:
                 llm_response = out
-        return _content_to_text(llm_response.content) or text
+            if getattr(plugin, "blocked_count", 0) > blocked_before:
+                self.last_outcome.update(blocked=True, layer=getattr(plugin, "name", "output_guardrail"))
+            if getattr(plugin, "redacted_count", 0) > redacted_before:
+                self.last_outcome.update(redacted=True, layer=getattr(plugin, "name", "output_guardrail"),
+                                         output_issues=getattr(plugin, "last_issues", []))
+        # An intentional empty replacement must never fall back to the unsafe text.
+        return _content_to_text(llm_response.content)
 
 
 def _content_to_text(content: Any) -> str:
@@ -191,7 +198,7 @@ def create_blue_pair(
     output_hooks: list | None = None,
     temperature: float = 0.4,
 ) -> tuple[OpenAIAgent, OpenAIRunner]:
-    """Blue Team — always OpenRouter liquid/lfm-3-1.7b:free."""
+    """Blue Team — fixed LFM3-1.7B with the selected provider's API identifier."""
     return _make_pair(
         name=name,
         instruction=instruction,
@@ -217,7 +224,7 @@ def create_openai_pair(
     temperature: float = 0.4,
     model: str | None = None,
 ) -> tuple[OpenAIAgent, OpenAIRunner]:
-    """Red Team OpenAI path (default = soft model; advance may pass harder)."""
+    """Red Team via an OpenAI-compatible provider, including CKey."""
     return _make_pair(
         name=name,
         instruction=instruction,

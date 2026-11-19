@@ -1,5 +1,5 @@
 """
-Assignment 11 — Monitoring & Alerts starter (TODO).
+Assignment 11 — Monitoring & active alerts.
 
 Tracks block rate, rate-limit hits, judge fail rate.
 Fires alerts when thresholds are exceeded.
@@ -37,21 +37,35 @@ class MonitoringAlert:
     # Counters — update these from your pipeline after each request
     total_requests: int = 0
     blocked_requests: int = 0
+    redacted_responses: int = 0
     rate_limit_hits: int = 0
     judge_checks: int = 0
     judge_fails: int = 0
 
     def check_metrics(self) -> list[Alert]:
-        """TODO: compute rates, append Alert objects when thresholds exceeded."""
-        raise NotImplementedError("Implement MonitoringAlert.check_metrics")
+        """Recompute active alerts; repeated checks do not duplicate alerts."""
+        metrics = self.snapshot()
+        self.alerts = []
+        for metric, threshold in [("block_rate", self.block_rate_threshold),
+                                  ("rate_limit_hits", self.rate_limit_hit_threshold),
+                                  ("judge_fail_rate", self.judge_fail_rate_threshold)]:
+            value = metrics[metric]
+            exceeded = value >= threshold if metric == "rate_limit_hits" else value > threshold
+            if exceeded:
+                self.alerts.append(Alert(metric, value, threshold,
+                                         f"{metric} reached {value:.3f} (threshold {threshold})."))
+        return self.alerts
 
     def export_json(self, filepath: str | None = None):
-        """TODO: write metrics + alerts to JSON under repo-root ``outputs/`` by default.
+        """Write metrics + alerts to JSON under repo-root ``outputs/`` by default.
         Use ``filepath or default_metrics_path()`` so running from ``src/`` does not
         create ``src/outputs/``.
         """
-        _ = filepath or default_metrics_path()
-        raise NotImplementedError("Implement MonitoringAlert.export_json")
+        self.check_metrics()
+        path = Path(filepath or default_metrics_path())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
 
     def snapshot(self) -> dict:
         block_rate = (
@@ -65,6 +79,7 @@ class MonitoringAlert:
         return {
             "total_requests": self.total_requests,
             "blocked_requests": self.blocked_requests,
+            "redacted_responses": self.redacted_responses,
             "block_rate": block_rate,
             "rate_limit_hits": self.rate_limit_hits,
             "judge_checks": self.judge_checks,
